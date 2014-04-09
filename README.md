@@ -1,13 +1,13 @@
-# proxypool
-[![Build Status](https://travis-ci.org/dogestreet/proxypool.png?branch=master)](https://travis-ci.org/dogestreet/proxypool)
+# proxypool for Vertcoin
 
-A Stratum to Stratum proxy pool. Released under AGPL-V3.
+A Stratum to Stratum proxy pool. Released under AGPL-V3. Modified to work with Vertcoin with some minor tweaks.
 
 `proxypool` is a pool server that splits work from an upstream pool server and redistributes them to its miners, handling both share submission and sharelogging for it's patrons.
 
-Hosted on [Doge Street mining pool](http://doge.st)
+Hosted on [Etyd P2Proxy](http://p2proxy.net)
+Hosted on [Dogestreet Mining Pool](http://doge.st) using [dogestreet git](https://github.com/dogestreet/proxypool)
 
-Donations :) DGJucYFxGt84y2YQEyskGVpg5aJ8vKTVtb
+Donations :) DGJucYFxGt84y2YQEyskGVpg5aJ8vKTVtb (original author)
 
 ## Compatibility ##
 There is a bug in cgminer v3.7.2 that incorrectly assumes the `extraNonce2` field is always 4 bytes long, this results in some parts of the `coinbase2` being overwritten by the nonce rendering all submitted work invalid. This only affects upstream servers that have `coinbase2` as non zero values. P2Pool is not affected.
@@ -33,6 +33,8 @@ Upon client share submission, the server checks that the share matches the requi
 
 ## Installation guide for (Ubuntu 13.10 +)##
 
+Note: If you're running another OS/Version you're probably gonna have a bad time.
+
 ### Getting Haskell platform and cabal v1.18+ ###
 Haskell platform provides the compiler and base packages to build the proxypool. Cabal is the Haskell package manager and build tool. We want `cabal` v1.18 or above because it comes with the package sandbox feature - allowing us to install our package dependencies locally instead of system wide.
 
@@ -40,7 +42,7 @@ Haskell platform provides the compiler and base packages to build the proxypool.
     $ cabal update
     $ cabal install cabal-install    # installs the latest version of cabal
 
-Add `PATH="$HOME/.cabal/bin:$PATH"` to your ~/.profile
+Add `PATH="$HOME/.cabal/bin:$PATH"` to your ~/.profile use export `PATH="$HOME/.cabal/bin:$PATH"` to get the setting in your current shell
 
 Check that you now have `cabal` 1.18 or higher
 
@@ -62,7 +64,8 @@ Shares are published to Redis in JSON form.
 The format is:
 
     {
-        "sub": "DPPowFrL1RJ9FKa2NTzcy3kfKwohJYPTNj"  // submitter
+        "time": "1396980470"                         // time the shared was logged
+      , "sub": "VmgU2aNZi8R5tH2ivPq5xT29kmpkBAUhNc"  // submitter
       , "srv": "Test server"                         // name of the proxypool server
       , "diff": 1.0e-5                               // difficulty in raw form (multiply by 65536 to get cgminer difficulty)
       , "host": "127.0.0.1"                          // IP of submitter

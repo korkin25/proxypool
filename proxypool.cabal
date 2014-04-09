@@ -16,7 +16,8 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-    c-sources:           scrypt/scrypt.c
+    extra-libraries:     crypto
+    c-sources:           scrypt/scrypt.c scrypt/scrypt-sse2.c
     cc-options:          -Wall -std=c99
     include-dirs:        include
     ghc-options:         -Wall -threaded

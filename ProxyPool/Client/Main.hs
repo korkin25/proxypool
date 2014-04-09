@@ -38,7 +38,7 @@ runClient = forkIO $ do
     upstream <- getAddrInfo
                     (Just $ defaultHints { addrFamily = AF_INET, addrSocketType = Stream })
                     (Just "localhost")
-                    (Just "9666")
+                    (Just "9555")
 
     case upstream of
         []  -> hPutStrLn stderr $ name ++ ": getaddrinfo failed"

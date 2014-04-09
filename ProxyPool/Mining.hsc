@@ -48,7 +48,7 @@ import qualified Crypto.Hash.SHA256 as S
 
 #include "scrypt.h"
 
-foreign import ccall "scrypt_1024_1_1_256" c_scrypt :: Ptr CChar -> Ptr CChar -> IO ()
+foreign import ccall "scrypt_N_sse2" c_scrypt :: Ptr CChar -> Ptr CChar -> IO ()
 
 data Work
     = Work { w_job             :: T.Text

@@ -31,7 +31,7 @@ import System.Timeout
 import Control.Applicative ((<$>), (<*>))
 import Control.Arrow ((&&&))
 
-import Control.Monad (forever, join, when, mzero, forM_)
+import Control.Monad (forever, join, when, mzero)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Either
 
@@ -193,7 +193,8 @@ data GlobalState
                   }
 
 data Share
-    = Share { _sh_submitter     :: {-# UNPACK #-} !T.Text
+    = Share { _sh_foundtime     :: {-# UNPACK #-} !Int
+            , _sh_submitter     :: {-# UNPACK #-} !T.Text
             , _sh_difficulty    :: {-# UNPACK #-} !Double
             , _sh_host          :: {-# UNPACK #-} !T.Text
             , _sh_server        :: {-# UNPACK #-} !T.Text
@@ -202,7 +203,9 @@ data Share
     deriving (Show, Typeable)
 
 instance ToJSON Share where
-    toJSON (Share sub diff host srv valid) = object [ "sub"     .= sub
+    toJSON (Share foundtime sub diff host srv valid) = object [ 
+                                                      "time"    .= foundtime
+                                                    , "sub"     .= sub
                                                     , "diff"    .= diff
                                                     , "host"    .= host
                                                     , "srv"     .= srv
@@ -273,6 +276,7 @@ finaliseHandler state = do
     hClose $ h_handle state
     readIORef (h_children state) >>= mapM_ cancel
     writeIORef (h_children state) []
+
 
 -- | Initalises client state
 initaliseClient :: Handle -> String -> GlobalState -> IO ClientState
@@ -481,7 +485,6 @@ handleClient global local = do
                        | currentHash * (1 - targetAllowance) > estimatedHash || estimatedHash > currentHash * (1 + targetAllowance) -> do
                               -- cap difficulty to min and upstream
                               let newDiff = min (max minDifficulty $ ah2d (fromIntegral target * (60 / fromIntegral elapsedTime)) estimatedHash) upstreamDiff
-
                               writeTVar (c_difficulty local) newDiff
                               return $ setDiff newDiff
 
@@ -533,7 +536,9 @@ handleClient global local = do
                | otherwise -> liftIO $ writeResponse rid $ General $ Left $ Array $ V.fromList [Number (-3), String "Invalid share"]
 
             -- log the share
-            atomicModifyIORef' (g_shareList global) $ \xs -> ((BL.toStrict $ encode $ Share user diff (T.pack $ c_host local) (s_serverName . g_settings $ global) fresh) : xs, ())
+            (_work, _, _) <- readIORef $ g_work global
+            shareTime <- (round `fmap` getPOSIXTime)
+            atomicModifyIORef' (g_shareList global) $ \xs -> ((BL.toStrict $ encode $ Share shareTime user diff  (T.pack $ c_host local) (s_serverName . g_settings $ global) fresh) : xs, ())
 
             -- record shares for vardiff
             currentTime <- getPOSIXTime
@@ -662,11 +667,11 @@ handleDB global local = do
     -- handle share logging
     forever $ do
         shares  <- atomicModifyIORef' (g_shareList global) $ (,) []
-        results <- R.runRedis conn $ mapM (R.publish channel) $ reverse shares
+        result <- R.runRedis conn $ R.rpush channel $ reverse shares
 
-        forM_ results $ \case
-            Right _ -> return ()
-            Left  _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
+        case result of
+              Right _ -> return ()
+              Left  _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
 
         threadDelay $ 2 * 10^(6 :: Integer)
 
