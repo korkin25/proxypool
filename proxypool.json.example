@@ -12,7 +12,7 @@
   , "redisAuth": "my redis auth"
   , "redisChanName": "shares"
 
-  , "publicKeyByte": 30
+  , "publicKeyByte": 71
   , "extraNonce2Size": 2
   , "extraNonce3Size": 2
 
