@@ -38,7 +38,7 @@ Note: If you're running another OS/Version you're probably gonna have a bad time
 ### Getting Haskell platform and cabal v1.18+ ###
 Haskell platform provides the compiler and base packages to build the proxypool. Cabal is the Haskell package manager and build tool. We want `cabal` v1.18 or above because it comes with the package sandbox feature - allowing us to install our package dependencies locally instead of system wide.
 
-    $ sudo apt-get install haskell-platform
+    $ sudo apt-get install haskell-platform libssl-dev
     $ cabal update
     $ cabal install cabal-install    # installs the latest version of cabal
 

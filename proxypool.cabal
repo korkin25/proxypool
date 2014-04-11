@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 library
     extra-libraries:     crypto
     c-sources:           scrypt/scrypt.c scrypt/scrypt-sse2.c
-    cc-options:          -Wall -std=c99
+    cc-options:          -Wall -std=c99 -msse2
     include-dirs:        include
     ghc-options:         -Wall -threaded
     ghc-prof-options:    -auto-all -caf-all -rtsopts
