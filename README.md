@@ -51,6 +51,7 @@ Check that you now have `cabal` 1.18 or higher
 ### Building ###
 
     $ cabal sandbox init    # create a package sandbox so you don't mess up your system's packages
+    $ cabal install "aeson >=0.6.2.1" "async >=2.0.1.5" "base16-bytestring >=0.1" "cryptohash >=0.11" "either >=4.1" "hedis >=0.6.3" "hslogger >=1.2.3" "network >=2.4.2.2" "select >=0.4.0.1" "text >=1.0.0.1" "unordered-containers >=0.2.3.3" "vector >=0.10.9.1"
     $ cabal configure
     $ cabal build
 
