@@ -670,8 +670,8 @@ handleDB global local = do
         result <- R.runRedis conn $ R.rpush channel $ reverse shares
 
         case result of
-              Right _ -> return ()
-              Left  _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
+              Left _ -> return ()
+              Right  _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
 
         threadDelay $ 2 * 10^(6 :: Integer)
 
