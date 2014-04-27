@@ -13,6 +13,7 @@
   , "redisChanName": "shares"
 
   , "publicKeyByte": 71
+  , "publicAuxKeyByte": 50
   , "extraNonce2Size": 2
   , "extraNonce3Size": 2
 

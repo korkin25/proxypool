@@ -122,6 +122,8 @@ data ServerSettings
                      , s_redisChanName       :: T.Text
                      -- | The byte prepended to the public key, used to verify miner addresses, 0 for Bitcoin, 30 for Dogecoin
                      , s_publickeyByte       :: Word8
+                     -- | Byte predended to miner's auxilliary chain-address
+                     , s_publicAuxkeyByte    :: Word8
                      -- | Size of the new en2
                      , s_extraNonce2Size     :: Int
                      -- | Size of the new en3
@@ -158,6 +160,7 @@ instance FromJSON ServerSettings where
                            v .: "redisAuth"           <*>
                            v .: "redisChanName"       <*>
                            v .: "publicKeyByte"       <*>
+                           v .: "publicAuxKeyByte"    <*>
                            v .: "extraNonce2Size"     <*>
                            v .: "extraNonce3Size"     <*>
                            v .: "vardiffRetargetTime" <*>
@@ -195,6 +198,7 @@ data GlobalState
 data Share
     = Share { _sh_foundtime     :: {-# UNPACK #-} !Int
             , _sh_submitter     :: {-# UNPACK #-} !T.Text
+            , _sh_aux           :: {-# UNPACK #-} !T.Text
             , _sh_difficulty    :: {-# UNPACK #-} !Double
             , _sh_host          :: {-# UNPACK #-} !T.Text
             , _sh_server        :: {-# UNPACK #-} !T.Text
@@ -203,9 +207,10 @@ data Share
     deriving (Show, Typeable)
 
 instance ToJSON Share where
-    toJSON (Share foundtime sub diff host srv valid) = object [ 
+    toJSON (Share foundtime sub aux diff host srv valid) = object [ 
                                                       "time"    .= foundtime
                                                     , "sub"     .= sub
+                                                    , "aux"     .= aux
                                                     , "diff"    .= diff
                                                     , "host"    .= host
                                                     , "srv"     .= srv
@@ -409,21 +414,21 @@ handleClient global local = do
         forever $ getSkipChan localNotifyChan >>= const sendJob
 
     -- wait for mining.authorization call
-    maybeUser <- timeout ((s_authTimeout . g_settings $ global) * 10^(6 :: Int)) $ process handle $ \case
-        Just (Request rid (Authorize user _)) -> do
+    maybeAuth <- timeout ((s_authTimeout . g_settings $ global) * 10^(6 :: Int)) $ process handle $ \case
+        Just (Request rid (Authorize user auxaddr)) -> do
             -- check if the address they are using is a valid address
-            if validateAddress (s_publickeyByte . g_settings $ global) $ T.encodeUtf8 user
+            if (validateAddress (s_publickeyByte . g_settings $ global) $ T.encodeUtf8 user) && (validateAddress (s_publicAuxkeyByte . g_settings $ global) $ T.encodeUtf8 auxaddr)
                 then do
                     liftIO $ writeResponse rid $ General $ Right $ Bool True
-                    finish user
+                    finish [user, auxaddr]
                 else liftIO $ do
-                    writeResponse rid $ General $ Left $ Array $ V.fromList [ Number (-2), String "Username is not a valid address" ]
-                    infoM "client" $ showClient local ++ " invalid username " ++ T.unpack user
+                    writeResponse rid $ General $ Left $ Array $ V.fromList [ Number (-2), String "Username or auxaddress is not a valid address" ]
+                    infoM "client" $ showClient local ++ " invalid username " ++ T.unpack user ++ " or auxaddress " ++ T.unpack auxaddr
 
         _ -> continue
 
-    user <- maybe (killClient "Took too long to auth") return maybeUser
-    infoM "client" $ showClient local ++ " authorised with " ++ T.unpack user
+    [user, auxaddr] <- maybe (killClient "Took too long to auth") return maybeAuth
+    infoM "client" $ showClient local ++ " authorised with " ++ T.unpack user ++ " aux: " ++ T.unpack auxaddr
     putMVar authed ()
 
     -- client initalisation
@@ -538,7 +543,7 @@ handleClient global local = do
             -- log the share
             (_work, _, _) <- readIORef $ g_work global
             shareTime <- (round `fmap` getPOSIXTime)
-            atomicModifyIORef' (g_shareList global) $ \xs -> ((BL.toStrict $ encode $ Share shareTime user diff  (T.pack $ c_host local) (s_serverName . g_settings $ global) fresh) : xs, ())
+            atomicModifyIORef' (g_shareList global) $ \xs -> ((BL.toStrict $ encode $ Share shareTime user auxaddr diff  (T.pack $ c_host local) (s_serverName . g_settings $ global) fresh) : xs, ())
 
             -- record shares for vardiff
             currentTime <- getPOSIXTime
@@ -666,12 +671,16 @@ handleDB global local = do
 
     -- handle share logging
     forever $ do
-        shares  <- atomicModifyIORef' (g_shareList global) $ (,) []
-        result <- R.runRedis conn $ R.rpush channel $ reverse shares
-
-        case result of
-              Left _ -> return ()
-              Right  _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
+        shares <- atomicModifyIORef' (g_shareList global) $ (,) []
+        if null shares
+        then
+            do return ()
+        else
+            do 
+                result <- R.runRedis conn $ R.rpush channel $ reverse shares
+                case result of
+                    Right _ -> return ()
+                    Left _ -> errorM "db" $ "Error while publishing share (" ++ show shares ++ ")"
 
         threadDelay $ 2 * 10^(6 :: Integer)
 
