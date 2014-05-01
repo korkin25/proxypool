@@ -50,6 +50,7 @@ Check that you now have `cabal` 1.18 or higher
 
 ### Building ###
 
+    $ cd proxypool
     $ cabal sandbox init    # create a package sandbox so you don't mess up your system's packages
     $ cabal install "aeson >=0.6.2.1" "async >=2.0.1.5" "base16-bytestring >=0.1" "cryptohash >=0.11" "either >=4.1" "hedis >=0.6.3" "hslogger >=1.2.3" "network >=2.4.2.2" "select >=0.4.0.1" "text >=1.0.0.1" "unordered-containers >=0.2.3.3" "vector >=0.10.9.1"
     $ cabal configure
@@ -80,7 +81,7 @@ All configuration is done in `proxypool.json`. Most options should be self expla
 `redisHost` is the hostname of the Redis server. `redisAuth` is the auth key used to access it, it can be set as `null` if there is no auth key. `redisChanName` is the name of the channel used to publish shares.
 
 ### Address validation ###
-The proxypool implements the proper address validation algorithm for public keys. Since different coins prepend a different byte to the checksum, this option is configurable in `publicKeyByte` and `publicAuxKeyBye`. It is expected that miners use their Vertcoin payout address as their username and their Monocle payout address as their password in their mining client. 
+The proxypool implements the proper address validation algorithm for public keys. Since different coins prepend a different byte to the checksum, this option is configurable in `publicKeyByte` and `publicAuxKeyByte`. It is expected that miners use their Vertcoin payout address as their username and their Monocle payout address as their password in their mining client. 
 
 ### Nonce ###
 `extraNonce2Size` and `extraNonce3Size` control the how the upstream's `extraNonce2` is split. Thus `extraNonce2Size` and `extraNonce3Size` should add up the to the upstream's `extraNonce2`'s size.
