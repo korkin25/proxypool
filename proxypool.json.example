@@ -1,11 +1,11 @@
 {
     "serverName": "Test server"
-  , "upstreamHost": "stratum.example.com"
-  , "upstreamPort": 9555
+  , "upstreamHost": "127.0.0.1"
+  , "upstreamPort": 9171
 
   , "localPort": 9555
 
-  , "username": "VtUMNMqHmszfCRBtooAFfRCCx9DRTnJ8bd+0.000500"
+  , "username": "VtUMNMqHmszfCRBtooAFfRCCx9DRTnJ8bd+0.00200"
   , "password": "anything"
 
   , "redisHost": "localhost"
