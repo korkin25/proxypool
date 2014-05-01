@@ -80,7 +80,7 @@ All configuration is done in `proxypool.json`. Most options should be self expla
 `redisHost` is the hostname of the Redis server. `redisAuth` is the auth key used to access it, it can be set as `null` if there is no auth key. `redisChanName` is the name of the channel used to publish shares.
 
 ### Address validation ###
-The proxypool implements the proper address validation algorithm for public keys. Since different coins prepend a different byte to the checksum, this option is configurable in `publicKeyByte`. It is expected that miners use their payout address as their username in their mining client. The server does not check passwords.
+The proxypool implements the proper address validation algorithm for public keys. Since different coins prepend a different byte to the checksum, this option is configurable in `publicKeyByte` and `publicAuxKeyBye`. It is expected that miners use their Vertcoin payout address as their username and their Monocle payout address as their password in their mining client. 
 
 ### Nonce ###
 `extraNonce2Size` and `extraNonce3Size` control the how the upstream's `extraNonce2` is split. Thus `extraNonce2Size` and `extraNonce3Size` should add up the to the upstream's `extraNonce2`'s size.
