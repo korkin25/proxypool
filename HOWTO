@@ -20,7 +20,11 @@ p2pool-vtc nodes on the other networks with no issues).
 
 The dependencies for the share tracking/payouts software mean that you'll have to update to a somewhat recent distro. These 
 instructions were tested against Ubuntu 13.10 and 14.04LTS. If you're running an earlier distro such as Ubuntu 12.04 you'll need 
-to update with sudo update-manager -d and reboot.
+to update with:
+
+sudo do-release-upgrade -d 
+
+and reboot.
 
 The new libraries in the updated distro will have broken your existing vertcoind (and any other wallets on the node), so you'll 
 need to rebuild them.
