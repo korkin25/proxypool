@@ -66,7 +66,7 @@ def app_log(message):
     line = "%s %s" % (datetime.now(), message)
     print line
     with open("payout.log", "a") as f:
-        f.write(line)
+        f.write(line + "\n")
         f.flush()
         
 def store_tx(today, txhash, payout_tx, coin):
@@ -168,7 +168,7 @@ def pay_shares():
 
         paid_rows[paid_rows_idx].append(rowid)
 
-    
+
     for user in vtc_payout_tx.keys():
         vtc_payout_tx[user] = round(vtc_payout_tx[user], 8)
     for auxuser in mon_payout_tx.keys():
@@ -188,9 +188,10 @@ def pay_shares():
             vtc_payout_tx[address] = round(vtc_payout_tx[address], 8)
             continue
         del vtc_payout_tx[address]
-        idx = paid_rows_map[address]
-        del paid_rows_map[address]
-        paid_rows[idx][0]["vtcpaid"] = False
+        if address in paid_rows_map:
+            idx = paid_rows_map[address]
+            del paid_rows_map[address]
+            paid_rows[idx][0]["vtcpaid"] = False
 
     # calculate mon fees and remove any payouts that are below mintx
     for address in mon_payout_tx.keys():
@@ -200,9 +201,10 @@ def pay_shares():
             mon_payout_tx[address] = round(mon_payout_tx[address], 8)
             continue
         del mon_payout_tx[address]
-        idx = paid_rows_map[address]
-        del paid_rows_map[address]
-        paid_rows[idx][0]["monpaid"] = False
+        if address in paid_rows_map:
+            idx = paid_rows_map[address]
+            del paid_rows_map[address]
+            paid_rows[idx][0]["monpaid"] = False
         
         # neither balance will be paid
         if not paid_rows[idx][0]["vtcpaid"]:
