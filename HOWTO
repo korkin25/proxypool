@@ -1,0 +1,190 @@
+This HOWTO contains instructions to set up merged mining and payouts of MON on an existing VTC p2pool node. 
+If you don't already operate a node at all, please see https://github.com/donSchoe/p2pool-n for the basics of setting up a node.
+
+The solution in this HOWTO is quite temporary/provisional. The merged mining support in p2pool as it was, was very rudimentary (there was 
+no provision of share tracking or payouts, so the only effective way to merged mine was on your own private node) - in the limited time 
+available, all we have been able to do is get a basic CPPSRB (Capped Pay Per Share with Recent Backpay) system in place, at the cost of 
+having to proxy all the work, including the VTC work, and pay it out using scripts - so it is necessary for your node to hold a balance 
+of both VTC and MON, Note that the balance/float you will hold should remain small unlike a traditional pool, since there is no provision 
+for users to use you like a bank in the way they can an MPOS pool, since they cannot choose a payout threshold - the scripts pay out all 
+the VTC and MON they can every 5 minutes, almost entirely emptying the wallets, other than any fees applied in the proxypool configuration 
+(which could be zero for VTC enabling you to apply the VTC fees in p2pool as usual).
+
+We don't envision this being a permanent solution - we would like to get a better system in place soon, with a multi-sharechain 
+implementation of p2pool so that multiple merge chains can be mined in a fully distributed way, but time constaints have meant that 
+wasn't possible at this stage. 
+
+Note that these instructions will work fine whether your node is on p2pool network 1, 2 or 3. For nodes on multiple networks 
+(on the same server) it's advised to pick one of the networks to run the merged mining against (you can still retain the plain 
+p2pool-vtc nodes on the other networks with no issues).
+
+The dependencies for the share tracking/payouts software mean that you'll have to update to a somewhat recent distro. These 
+instructions were tested against Ubuntu 13.10 and 14.04LTS. If you're running an earlier distro such as Ubuntu 12.04 you'll need 
+to update with sudo update-manager -d and reboot.
+
+The new libraries in the updated distro will have broken your existing vertcoind (and any other wallets on the node), so you'll 
+need to rebuild them.
+
+First check the distro upgrade didn't break or remove any dependencies:
+
+sudo apt-get install build-essential libssl-dev libdb-dev libdb++-dev libupnp-dev libminiupnpc-dev miniupnpc libboost-all-dev git
+
+Now, in the vertcoin src folder 
+
+make -f makefile.unix clean 
+and 
+make -f makefile.unix 
+
+(the make clean is necessary) to rebuild the wallet against the updated dependencies in the new distro, remembering to copy 
+vertcoind to /usr/local/bin or similar if that's where you keep it.
+
+The following step can be skipped and come back to later if you are installing the pool software before the Monocle release time:
+
+Get Monocle:
+
+git clone https://github.com/erkmos/monocle
+cd monocle/src
+make -f makefile.unix
+
+Copy monocled to /usr/local/bin or similar if that's where you keep wallet binaries, and start the monocle wallet daemon 
+
+Now run p2pool with the --merged option: 
+
+python run_p2pool.py --net vertcoin -f YOUR-FEES-% --give-author 0 --no-bugreport --merged http://RPCUser:RPCPassword@127.0.0.1:6888
+
+Nb. the 6888 above is the default RPC port for Monocle, obviously if you had changed this in the monocle.conf file you'd need to change
+it here as well. You can cat the Monocle debug.log to see that GetAuxBlock RPC calls are being made to monocled by p2pool to double-check
+that everything is working properly. The log entries will look like  "ThreadRPCServer method=getauxblock"
+
+At this point, p2pool is now listening on port 9171 (or 9172/9174 if on network 2/3) and is merged-mineable, however this doesn't provide
+any share tracking or payouts - all the MON would go into the nodes local Monocle wallet at this point rather than being paid out to users.
+This is the configuration you'd want if you were just setting up a local node on your own LAN for your own private mining.
+
+So we'll move on to installing the payout software:
+
+Start installing the dependencies:
+
+sudo apt-get install redis-server python-pip mysql-server haskell-platform libmysqlclient-dev python-mysqldb libssl-dev python-redis
+sudo pip install bunch python-jsonrpc
+
+Get the share tracking and payouts software:
+
+git clone https://github.com/erkmos/proxypool
+
+cd proxypool
+
+cabal update
+cabal install cabal-install
+
+PATH="$HOME/.cabal/bin:$PATH" 
+
+and edit your ~/.profile to add PATH="$HOME/.cabal/bin:$PATH" at the end
+
+cabal --version and check you have cabal 1.18 or higher
+
+Double check you're in the proxypool folder then:
+
+cabal sandbox init
+cabal --force-reinstalls install "aeson >=0.6.2.1" "async >=2.0.1.5" "base16-bytestring >=0.1" "cryptohash >=0.11" "either >=4.1" "hedis >=0.6.3" "hslogger >=1.2.3" "network >=2.4.2.2" "select >=0.4.0.1" "text >=1.1.1.1" "unordered-containers >=0.2.3.3" "vector >=0.10.9.1"
+cabal configure
+cabal build
+
+(Note that in Ubuntu 13.10 the version of text above should be changed to "text >=1.0.0.1")
+
+Get a wallet address: vertcoind getaccountaddress "" and note if for later
+
+now copy proxypool.json.example to proxypool.json and edit it to configure - you should set servername, upstreamhost (your p2pool, 
+probably localhost), upstreamport (again, the p2pool port) and set username to VertCoinAddress+0.002 
+eg. Vni38Fi1BH9GFjBNKCm7NBmBd5kCAsJPVe+0.002
+
+Here's an example conf file:
+
+{
+    "serverName": "p2proxy.noodlyappendage.net"
+  , "upstreamHost": "localhost"
+  , "upstreamPort": 9171
+
+  , "localPort": 9555
+
+  , "username": "Vni38Fi1BH9GFjBNKCm7NBmBd5kCAsJPVe+0.002"
+  , "password": "anything"
+
+  , "redisHost": "localhost"
+  , "redisAuth": "my redis auth"
+  , "redisChanName": "shares"
+
+  , "publicKeyByte": 71
+  , "publicAuxKeyByte": 50
+  , "extraNonce2Size": 2
+  , "extraNonce3Size": 2
+
+  , "vardiffRetargetTime": 180
+  , "vardiffTarget": 10
+  , "vardiffAllowance": 0.25
+  , "vardiffMin": 0.0002
+  , "vardiffInitial": 0.0002
+  , "vardiffShares": 40
+
+  , "initTimeout": 30
+  , "authTimeout": 30
+  , "clientIdle": 1000
+
+  , "logLevel": "INFO"
+}
+
+
+
+Now for the payouts system, you need to create a database and user with the appropriate credentials:
+
+mysql -u root -p
+CREATE USER 'proxypool'@'localhost' IDENTIFIED BY 'insert-password-here';
+create database proxypool;
+grant all privileges on proxypool.* to proxypool@localhost identified by 'insert-password-here';
+flush privileges;
+quit
+
+cd into the payout folder (in the https://github.com/erkmos/proxypool/ repo we cloned earlier) where you will find the payout scripts,
+a sharelogger.conf file and a db.sql file.
+
+Import the db structure with mysql -u proxypool -p proxypool < db.sql and enter the proxypool users password
+
+Now configure the sharelogger.conf file with your RPC username/passwords and RPC ports for both VTC and MON, the db host, credentials 
+and dbname also configure the vtcfeeaddress and fee (in percent), and the monaddress along with minbalance which should be at least 
+1.0 to cover MON transaction fees (there are no free transactions in MON).
+
+The sharelogger.conf file should in the same folder as sharelogger.py and payout.py
+
+Now in the proxypool folder run ./dist/build/server/server to start proxypool - it will listen on port 9555 which is where users should 
+connect their miner. Make sure your firewall is open. There is no web interface. 
+
+Now start the payout and sharelogging scripts (which run in the background continually):
+
+First start with
+
+python payout.py
+
+to check they run ok and throw no errors relating to the configuration file etc, then to run in the background for normal ongoing use: 
+
+nohup python payout.py &
+
+
+Note that there is no need to run the sharelogger.py script directly, only the payout.py script is run.
+
+Now instruct your users to connect on port 9555 and use their MON address as password. Eg:
+
+vertminer.exe -o "NODE-ADDRESS:9555" -u "VTC-ADDRESS" -p "MON-ADDRESS" --the-other-settings
+
+Note that users must understand that difficulty manipulation using the + option (eg passing an address like -u "VTC-ADDRESS+0.005") is NOT 
+possible when connecting to proxypool, they must use just their plain, unmodified VTC and MON addresses as username and password.
+
+Connecting to the proxypool port (9555) REQUIRES a monocle address as password. If users don't wish to mine using proxypool and receive 
+MON they can still connect to 9171/9172/9174 and all the Monocle that they earn will be instead be paid out to the other miners who 
+are mining on the proxypool port (9555)
+
+It's important to ensure that users realise that with this temporary solution for merged-mining, both MON and VTC will need to mature 
+120 blocks before payout, unlike when paid in the generation transaction where they mature once the user already received them.
+
+In the unlikely event any of you wish to set up "MON only" pools, MON can be treated just like any other coin daemon and can have a 
+stratum get work from it in the usual way.
+
+
