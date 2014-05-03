@@ -145,16 +145,20 @@ def pay_shares():
 
         if total_mon_amount <= mon_balance:
             if auxuser in mon_payout_tx:
-                mon_payout_tx[auxuser] += monvalue
+                if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01:
+                    mon_payout_tx[auxuser] += monvalue
+                    total_mon_amount += monvalue
             else:
                 mon_payout_tx[auxuser] = monvalue
-            total_mon_amount += monvalue
+                total_mon_amount += monvalue
         if total_vtc_amount <= vtc_balance:
             if user in vtc_payout_tx:
-                vtc_payout_tx[user] += vtcvalue
+                if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01:
+                    vtc_payout_tx[user] += vtcvalue
+                    total_vtc_amount += vtcvalue
             else:
                 vtc_payout_tx[user] = vtcvalue
-            total_vtc_amount += vtcvalue
+                total_vtc_amount += vtcvalue
         
         if user in paid_rows_map:
             paid_rows_idx = paid_rows_map[user]
