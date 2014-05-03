@@ -176,7 +176,7 @@ Note that there is no need to run the sharelogger.py script directly, only the p
 
 Now instruct your users to connect on port 9555 and use their MON address as password. Eg:
 
-vertminer.exe -o "NODE-ADDRESS:9555" -u "VTC-ADDRESS" -p "MON-ADDRESS" --the-other-settings
+vertminer.exe -o stratum+tcp://NODE-ADDRESS:9555 -u VTC-ADDRESS -p MON-ADDRESS --the-other-settings
 
 Note that users must understand that difficulty manipulation using the + option (eg passing an address like -u "VTC-ADDRESS+0.005") is NOT 
 possible when connecting to proxypool, they must use just their plain, unmodified VTC and MON addresses as username and password.
