@@ -117,8 +117,10 @@ def pay_shares():
     
     app_log("Fetching shares from database...")
     cursor.execute("""
-        select id, user, auxuser, monvalue, vtcvalue 
-        from stats_shares order by id desc""")
+        select id, user, auxuser, 
+        (case when (monpaid = 0) then monvalue else 0 end), 
+        (case when (vtcpaid = 0) then vtcvalue else 0 end)
+        from stats_shares order by foundtime desc""")
     rows = cursor.fetchall()
     conn.close()
     if rows is None: return
@@ -128,15 +130,17 @@ def pay_shares():
     vtc_wallet = Wallet("vtc", config)
     vtc_balance = vtc_wallet.get_balance() - config["minbalance"]
 
+
     total_mon_amount, total_vtc_amount = 0, 0
-    app_log("Available balance %.8f MON, %.8f VTC" % (mon_balance if mon_balance > 0 else 0, 
-                                                      vtc_balance if vtc_balance > 0 else 0))
+    app_log("Available balances %.8f MON, %.8f VTC" % (mon_balance if mon_balance > 0 else 0, 
+                                                       vtc_balance if vtc_balance > 0 else 0))
     app_log("Shares backlog %s" % len(rows))
 
     mon_payout_tx = dict()
     vtc_payout_tx = dict()
     paid_rows = []
 
+    # maps n addresses to sets of row ids
     paid_rows_map = dict()
 
     for rowid, user, auxuser, monvalue, vtcvalue in rows:
@@ -145,12 +149,14 @@ def pay_shares():
 
         if total_mon_amount <= mon_balance:
             if auxuser in mon_payout_tx:
+                # cap payouts at slightly above min_tx (before fees)
                 if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01:
                     mon_payout_tx[auxuser] += monvalue
                     total_mon_amount += monvalue
             else:
                 mon_payout_tx[auxuser] = monvalue
                 total_mon_amount += monvalue
+
         if total_vtc_amount <= vtc_balance:
             if user in vtc_payout_tx:
                 if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01:
@@ -160,10 +166,14 @@ def pay_shares():
                 vtc_payout_tx[user] = vtcvalue
                 total_vtc_amount += vtcvalue
         
-        if user in paid_rows_map:
+        # one vertcoin address, multiple monocle addresses
+        if user in paid_rows_map and not auxuser in paid_rows_map:
             paid_rows_idx = paid_rows_map[user]
-        elif auxuser in paid_rows_map:
+            paid_rows_map[auxuser] = paid_rows_idx
+        # one monocle addresses, multiple vertcoin addresses
+        elif not user in paid_rows_map and auxuser in paid_rows_map:
             paid_rows_idx = paid_rows_map[auxuser]
+            paid_rows_map[user] = paid_rows_idx
         else:
             paid_rows.append([dict(monpaid=True, vtcpaid=True)])
             paid_rows_idx = len(paid_rows) - 1
@@ -172,28 +182,25 @@ def pay_shares():
 
         paid_rows[paid_rows_idx].append(rowid)
 
-
+    # clean up floating point inaccuracies by rounding to full coin units
     for user in vtc_payout_tx.keys():
         vtc_payout_tx[user] = round(vtc_payout_tx[user], 8)
     for auxuser in mon_payout_tx.keys():
         mon_payout_tx[auxuser] = round(mon_payout_tx[auxuser], 8)
-    
-    app_log("Payable shares: %s" % sum(len(x)-1 for x in paid_rows))
 
-    # remove addresses with less than min_tx
+
     # FIXME: redistribute the coins that were from a users too small payout?
     mon_fee_amount, vtc_fee_amount = 0, 0
 
-    # calculate vtc fees and remove any payouts that are below 
+    # calculate vtc fees and remove any payouts that are below mintx
     for address in vtc_payout_tx.keys():
         if vtc_payout_tx[address] * (1 - fee) >= config["vtc_min_tx"]:
             this_fee = (vtc_payout_tx[address] * fee)
             vtc_fee_amount += this_fee
             vtc_payout_tx[address] -= this_fee
             vtc_payout_tx[address] = round(vtc_payout_tx[address], 8)
-            continue
-        del vtc_payout_tx[address]
-        if address in paid_rows_map:
+        else:
+            del vtc_payout_tx[address]
             idx = paid_rows_map[address]
             del paid_rows_map[address]
             paid_rows[idx][0]["vtcpaid"] = False
@@ -205,22 +212,23 @@ def pay_shares():
             mon_fee_amount += this_fee
             mon_payout_tx[address] -= this_fee
             mon_payout_tx[address] = round(mon_payout_tx[address], 8)
-            continue
-        del mon_payout_tx[address]
-        if address in paid_rows_map:
+        else:
+            del mon_payout_tx[address]
             idx = paid_rows_map[address]
             del paid_rows_map[address]
             paid_rows[idx][0]["monpaid"] = False
         
-        # neither balance will be paid
-        if not paid_rows[idx][0]["vtcpaid"]:
-            paid_rows[idx] = paid_rows[idx][:1]
-        
+            # neither balance will be paid
+            if not paid_rows[idx][0]["vtcpaid"]:
+                paid_rows[idx] = paid_rows[idx][:1]
+    
     if not vtc_payout_tx and not mon_payout_tx: 
-        app_log("No user with a high enough balance or not enough coins to payout.")
+        app_log("No user has a share balance that meets the minimum transaction requirement.")
         return None,None,None,None
     
-    app_log("fees: %.8f MON, %.8f VTC" % (mon_fee_amount, vtc_fee_amount))
+    app_log("Shares queued for payment: %d" % sum(len(x)-1 for x in paid_rows))
+    
+    app_log("Fees this run: %.8f MON, %.8f VTC" % (mon_fee_amount, vtc_fee_amount))
 
     if mon_fee_amount > 0:
         if not mon_wallet.depositfee(mon_fee_amount):
@@ -259,11 +267,11 @@ def pay_shares():
 
     today = datetime.utcnow()
 
-    # add the new transaction to the database
+    # add the new transactions to the database
     vtc_txid = store_tx(today, vtc_txhash, vtc_payout_tx, "vtc")
     mon_txid = store_tx(today, mon_txhash, mon_payout_tx, "mon")
 
-    app_log("Removing paid shares")
+    app_log("Removing paid shares...")
 
     conn = mdb.connect( 
         config["dbhost"], 
@@ -275,13 +283,13 @@ def pay_shares():
     cursor = conn.cursor()
     update_count = 0
     
-    # FIXME: shares don't always get moved to paidshares right after both 
-    # amounts are paid in full, but will be moved on the next successful payout
     for idx in set(paid_rows_map.values()):
+        # both share denominations have been paid during this run
         if paid_rows[idx][0]["monpaid"] and paid_rows[idx][0]["vtcpaid"]:
             for rowid in islice(paid_rows[idx], 1, None):
                 if update_count % 2000 == 0 and update_count > 0: 
                     conn.commit()
+                
                 # save paid shares
                 cursor.execute("""
                     insert into 
@@ -294,9 +302,12 @@ def pay_shares():
                     monvalue, vtcvalue, vtcdiff, mondiff, 
                     %s, %s from stats_shares where id = %s
                 """, (vtc_txid, mon_txid, rowid))
+                
                 # remove them from unpaid shares
                 cursor.execute("delete from stats_shares where id=%s", (rowid,))
                 update_count += 1
+
+        # only the monocle value has been paid for this share
         elif paid_rows[idx][0]["monpaid"]:
             for rowid in islice(paid_rows[idx], 1, None):
                 if update_count % 2000 == 0 and update_count > 0: 
@@ -304,6 +315,8 @@ def pay_shares():
                 cursor.execute(
                     "update stats_shares set monpaid=1 where id=%s", (rowid,))
                 update_count += 1
+
+        # only the vertcoin value has been paid for this share
         elif paid_rows[idx][0]["vtcpaid"]:
             for rowid in islice(paid_rows[idx], 1, None):
                 if update_count % 2000 == 0 and update_count > 0: 
