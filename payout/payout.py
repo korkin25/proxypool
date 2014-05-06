@@ -174,6 +174,9 @@ def pay_shares():
         elif not user in paid_rows_map and auxuser in paid_rows_map:
             paid_rows_idx = paid_rows_map[auxuser]
             paid_rows_map[user] = paid_rows_idx
+        # one vertcoin address, one monocle address
+        elif user in paid_rows_map and auxuser in paid_rows_map:
+            paid_rows_idx = paid_rows_map[user]
         else:
             paid_rows.append([dict(monpaid=True, vtcpaid=True)])
             paid_rows_idx = len(paid_rows) - 1
