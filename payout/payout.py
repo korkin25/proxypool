@@ -281,13 +281,13 @@ def pay_shares():
     )
     
     cursor = conn.cursor()
-    update_count = 0
+    update_count, deleted_count = 0
     
     for idx in set(paid_rows_map.values()):
         # both share denominations have been paid during this run
         if paid_rows[idx][0]["monpaid"] and paid_rows[idx][0]["vtcpaid"]:
             for rowid in islice(paid_rows[idx], 1, None):
-                if update_count % 2000 == 0 and update_count > 0: 
+                if deleted_count % 2000 == 0 and deleted_count > 0: 
                     conn.commit()
                 
                 # save paid shares
@@ -305,7 +305,7 @@ def pay_shares():
                 
                 # remove them from unpaid shares
                 cursor.execute("delete from stats_shares where id=%s", (rowid,))
-                update_count += 1
+                deleted_count += 1
 
         # only the monocle value has been paid for this share
         elif paid_rows[idx][0]["monpaid"]:
@@ -325,6 +325,7 @@ def pay_shares():
                     "update stats_shares set vtcpaid=1 where id=%s", (rowid,))
                 update_count += 1
 
+    app_log("Deleted %s paid shares." % deleted_count)
     conn.commit()
     conn.close()
     return vtc_txhash, vtc_payout_tx, mon_txhash, mon_payout_tx
