@@ -281,7 +281,7 @@ def pay_shares():
     )
     
     cursor = conn.cursor()
-    update_count, deleted_count = 0
+    update_count, deleted_count = 0,0
     
     for idx in set(paid_rows_map.values()):
         # both share denominations have been paid during this run
