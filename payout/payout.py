@@ -288,7 +288,7 @@ def pay_shares():
             if not paid_rows[i].vtcpaid:
                 del paid_rows[i]
 
-    if not vtc_txhash and not mon_txhash: return None, None
+    if not vtc_txhash and not mon_txhash: return None, None, None, None
 
     today = datetime.utcnow()
 
