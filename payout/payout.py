@@ -336,7 +336,7 @@ def pay_shares():
             if update_count % 2000 == 0 and update_count > 0: 
                 conn.commit()
             cursor.execute(
-                "update stats_shares set monpaid=1 where id=%s", (rowid,))
+                "update stats_shares set monpaid=1 where id=%s", (share.rowid,))
             update_count += 1
 
         # only the vertcoin value has been paid for this share
@@ -344,7 +344,7 @@ def pay_shares():
             if update_count % 2000 == 0 and update_count > 0: 
                 conn.commit()
             cursor.execute(
-                "update stats_shares set vtcpaid=1 where id=%s", (rowid,))
+                "update stats_shares set vtcpaid=1 where id=%s", (share.rowid,))
             update_count += 1
 
     app_log("Deleted %d paid shares." % deleted_count)
