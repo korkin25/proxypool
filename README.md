@@ -1,3 +1,7 @@
+# Payment scripts
+
+This repository now includes the payment scripts from p2proxy, please be advised that just like p2proxy these payout scripts are considered alpha quality (there will be bugs) and needs a lot of work.
+
 # proxypool for Vertcoin
 
 A Stratum to Stratum proxy pool. Released under AGPL-V3. Modified to work with Vertcoin with some minor tweaks.
