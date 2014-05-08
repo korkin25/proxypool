@@ -76,7 +76,7 @@ It is usually located in /etc/redis/redis.conf
 Make sure there is a line "bind 127.0.0.1", if not add it
 Make sure there is a line "requirepass PASSWORD", if not add it
 Change PASSWORD with a really stong alpha-numeric password (more than 32 caracters)
-Restart redis server with: service restart redis-server
+Restart redis server with: service redis-server restart
 
 Get the share tracking and payouts software:
 
