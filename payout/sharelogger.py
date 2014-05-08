@@ -27,9 +27,7 @@ class ShareLogger(Thread):
         )
         self.cursor = self.conn.cursor()
         rd = redis.StrictRedis(self.config["redishost"], 
-                               self.config["redisport"],
-                               0,
-                               self.config["redisauth"])
+                               self.config["redisport"])
         sharelist = self.config["redislist"]
         raw_share = None
         try:
