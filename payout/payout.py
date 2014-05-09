@@ -135,56 +135,80 @@ def pay_shares():
         select id, user, auxuser, 
         (case when (monpaid = 0) then monvalue else 0 end), 
         (case when (vtcpaid = 0) then vtcvalue else 0 end)
-        from stats_shares order by foundtime desc""")
+        from stats_shares
+        where vtcpaid = 0 or monpaid = 0
+        order by foundtime desc""")
     rows = cursor.fetchall()
     conn.close()
-    if rows is None: return
+    if rows is None:
+        app_log("No rows found needing payment")
+        return
     
     mon_wallet = Wallet("mon", config) 
-    mon_balance = mon_wallet.get_balance()- config["minbalance"]
+    mon_balance = mon_wallet.get_balance() - config["minbalance"]
     vtc_wallet = Wallet("vtc", config)
     vtc_balance = vtc_wallet.get_balance() - config["minbalance"]
 
-
-    total_mon_amount, total_vtc_amount = 0, 0
-    app_log("Available balances %.8f MON, %.8f VTC" % (mon_balance if mon_balance > 0 else 0, 
+    app_log("Available balances %.8f MON, %.8f VTC" % (mon_balance if mon_balance > 0 else 0,
                                                        vtc_balance if vtc_balance > 0 else 0))
     app_log("Shares backlog %s" % len(rows))
 
+    total_mon_amount, total_vtc_amount = 0, 0
     mon_payout_tx = dict()
     vtc_payout_tx = dict()
     paid_rows = []
+    unable_to_pay_vtc = False
+    unable_to_pay_mon = False
 
     for rowid, user, auxuser, monvalue, vtcvalue in rows:
         if total_mon_amount > mon_balance and total_vtc_amount > vtc_balance:
             break
 
+        if unable_to_pay_vtc and unable_to_pay_mon:
+            break
+
         monpaid, vtcpaid = False, False
-        if total_mon_amount <= mon_balance:
-            if auxuser in mon_payout_tx:
-                # cap payouts at slightly above min_tx (before fees)
-                if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01:
-                    mon_payout_tx[auxuser] += monvalue
+        if total_mon_amount <= mon_balance and not unable_to_pay_mon:
+            # If we can't afford to pay this user, then don't pay any others (save up)
+            if monvalue + total_mon_amount > mon_balance:
+                app_log("Unable to pay user {0} due to insufficient funds".format(auxuser))
+                unable_to_pay_mon = True
+            else:
+                if auxuser in mon_payout_tx:
+                    # cap payouts at slightly above min_tx (before fees)
+                    if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01:
+                        mon_payout_tx[auxuser] += monvalue
+                        total_mon_amount += monvalue
+                        monpaid = True
+                else:
+                    mon_payout_tx[auxuser] = monvalue
                     total_mon_amount += monvalue
                     monpaid = True
-            else:
-                mon_payout_tx[auxuser] = monvalue
-                total_mon_amount += monvalue
-                monpaid = True
 
-        if total_vtc_amount <= vtc_balance:
-            if user in vtc_payout_tx:
-                if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01:
-                    vtc_payout_tx[user] += vtcvalue
+        if total_vtc_amount <= vtc_balance and not unable_to_pay_vtc:
+            # if we can't afford to pay this user, then don't pay any others (save up)
+            if vtcvalue + total_vtc_amount > vtc_balance:
+                app_log("Unable to pay user {0} due to insufficient funds".format(user))
+                unable_to_pay_vtc = True
+            else:
+                if user in vtc_payout_tx:
+                    # cap payouts at slightly above min_tx (before fees)
+                    if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01:
+                        vtc_payout_tx[user] += vtcvalue
+                        total_vtc_amount += vtcvalue
+                        vtcpaid = True
+                else:
+                    vtc_payout_tx[user] = vtcvalue
                     total_vtc_amount += vtcvalue
                     vtcpaid = True
-            else:
-                vtc_payout_tx[user] = vtcvalue
-                total_vtc_amount += vtcvalue
-                vtcpaid = True
 
-        if not (monpaid or vtcpaid): continue
-
+        if not (monpaid or vtcpaid):
+            app_log("No valid payments found: {0} | {1} | {2:.8f} | {3:.8f}".format(user, auxuser, vtcvalue, monvalue))
+            continue
+        if monpaid:
+            app_log("Adding MON payment for {0} of {1:.8f}".format(auxuser, monvalue))
+        if vtcpaid:
+            app_log("Adding VTC payment for {0} of {1:.8f}".format(user, vtcvalue))
         paid_rows.append(Share(rowid, user, auxuser, vtcpaid, monpaid))
 
     # clean up floating point inaccuracies by rounding to full coin units
@@ -206,8 +230,10 @@ def pay_shares():
             vtc_fee_amount += this_fee
             vtc_payout_tx[address] -= this_fee
             vtc_payout_tx[address] = round(vtc_payout_tx[address], 8)
+            app_log("Sending payment to {0} of {1}".format(address, vtc_payout_tx[address]))
         else:
             unmark_addresses[address] = True
+            app_log("Payment to {0} of {1} doesn't meet minimum".format(address, vtc_payout_tx[address]))
             del vtc_payout_tx[address]
 
     # calculate mon fees and remove any payouts that are below mintx
@@ -217,8 +243,10 @@ def pay_shares():
             mon_fee_amount += this_fee
             mon_payout_tx[address] -= this_fee
             mon_payout_tx[address] = round(mon_payout_tx[address], 8)
+            app_log("Sending payment to {0} of {1}".format(address, mon_payout_tx[address]))
         else:
             unmark_addresses[address] = True
+            app_log("Payment to {0} of {1} doesn't meet minimum".format(address, mon_payout_tx[address]))
             del mon_payout_tx[address]
            
     for i in reversed(xrange(len(paid_rows))):
@@ -232,7 +260,7 @@ def pay_shares():
     
     if not vtc_payout_tx and not mon_payout_tx: 
         app_log("No user has a share balance that meets the minimum transaction requirement.")
-        return None,None,None,None
+        return None, None, None, None
     
     app_log("Shares queued for payment: %d" % len(paid_rows))
     
@@ -260,7 +288,7 @@ def pay_shares():
         vtc_wallet.withdrawfee(vtc_fee_balance)
     
     mon_fee_balance = mon_wallet.get_balance(config["feeaccount"])
-    if  mon_fee_balance > 10.0:
+    if mon_fee_balance > 10.0:
         if not config["monfeeaddress"] in mon_payout_tx: 
             mon_payout_tx[config["monfeeaddress"]] = mon_fee_balance
         else:
@@ -288,7 +316,8 @@ def pay_shares():
             if not paid_rows[i].vtcpaid:
                 del paid_rows[i]
 
-    if not vtc_txhash and not mon_txhash: return None, None, None, None
+    if not vtc_txhash and not mon_txhash:
+        return None, None, None, None
 
     today = datetime.utcnow()
 
@@ -296,7 +325,7 @@ def pay_shares():
     vtc_txid = store_tx(today, vtc_txhash, vtc_payout_tx, "vtc")
     mon_txid = store_tx(today, mon_txhash, mon_payout_tx, "mon")
 
-    app_log("Removing paid shares...")
+    app_log("Marking shares paid...")
 
     conn = mdb.connect( 
         config["dbhost"], 
@@ -306,7 +335,7 @@ def pay_shares():
     )
     
     cursor = conn.cursor()
-    update_count, deleted_count = 0,0
+    update_count, deleted_count = 0, 0
     
     for share in paid_rows:
         # both share denominations have been paid during this run
