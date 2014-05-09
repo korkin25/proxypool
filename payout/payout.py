@@ -181,7 +181,6 @@ def pay_shares():
                 unable_to_pay_mon = True
             else:
                 if auxuser in mon_payout_tx:
-                    # cap payouts at slightly above min_tx (before fees)
                     mon_payout_tx[auxuser] += monvalue
                     total_mon_amount += monvalue
                     monpaid = True
@@ -197,7 +196,6 @@ def pay_shares():
                 unable_to_pay_vtc = True
             else:
                 if user in vtc_payout_tx:
-                    # cap payouts at slightly above min_tx (before fees)
                     vtc_payout_tx[user] += vtcvalue
                     total_vtc_amount += vtcvalue
                     vtcpaid = True
