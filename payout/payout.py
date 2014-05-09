@@ -12,6 +12,9 @@ import argparse
 # sets how often to run the payouts, in seconds
 PAYOUT_INTERVAL = 300 
 
+# Enhanced logging?
+verboseLog = False
+
 try:
     with open("sharelogger.conf", "r") as f:
         config = json.loads(f.read())
@@ -141,7 +144,7 @@ def pay_shares():
     rows = cursor.fetchall()
     conn.close()
     if rows is None:
-        app_log("No rows found needing payment")
+        if verboseLog: app_log("No rows found needing payment")
         return
     
     mon_wallet = Wallet("mon", config) 
@@ -176,10 +179,9 @@ def pay_shares():
             else:
                 if auxuser in mon_payout_tx:
                     # cap payouts at slightly above min_tx (before fees)
-                    #if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01: # We are already checking this later, after calculating the total sum
-                        mon_payout_tx[auxuser] += monvalue
-                        total_mon_amount += monvalue
-                        monpaid = True
+                    mon_payout_tx[auxuser] += monvalue
+                    total_mon_amount += monvalue
+                    monpaid = True
                 else:
                     mon_payout_tx[auxuser] = monvalue
                     total_mon_amount += monvalue
@@ -193,22 +195,21 @@ def pay_shares():
             else:
                 if user in vtc_payout_tx:
                     # cap payouts at slightly above min_tx (before fees)
-                    #if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01: # We are already checking this later, after calculating the total sum
-                        vtc_payout_tx[user] += vtcvalue
-                        total_vtc_amount += vtcvalue
-                        vtcpaid = True
+                    vtc_payout_tx[user] += vtcvalue
+                    total_vtc_amount += vtcvalue
+                    vtcpaid = True
                 else:
                     vtc_payout_tx[user] = vtcvalue
                     total_vtc_amount += vtcvalue
                     vtcpaid = True
 
         if not (monpaid or vtcpaid):
-            app_log("No valid payments found: {0} | {1} | {2:.8f} | {3:.8f}".format(user, auxuser, vtcvalue, monvalue))
+            if verboseLog: app_log("No valid payments found: {0} | {1} | {2:.8f} | {3:.8f}".format(user, auxuser, vtcvalue, monvalue))
             continue
         if monpaid:
-            app_log("Adding MON payment for {0} of {1:.8f}".format(auxuser, monvalue))
+            if verboseLog: app_log("Adding MON payment for {0} of {1:.8f}".format(auxuser, monvalue))
         if vtcpaid:
-            app_log("Adding VTC payment for {0} of {1:.8f}".format(user, vtcvalue))
+            if verboseLog: app_log("Adding VTC payment for {0} of {1:.8f}".format(user, vtcvalue))
         paid_rows.append(Share(rowid, user, auxuser, vtcpaid, monpaid))
 
     # clean up floating point inaccuracies by rounding to full coin units
@@ -230,10 +231,10 @@ def pay_shares():
             vtc_fee_amount += this_fee
             vtc_payout_tx[address] -= this_fee
             vtc_payout_tx[address] = round(vtc_payout_tx[address], 8)
-            app_log("Sending payment to {0} of {1}".format(address, vtc_payout_tx[address]))
+            if verboseLog: app_log("Sending payment to {0} of {1}".format(address, vtc_payout_tx[address]))
         else:
             unmark_addresses[address] = True
-            app_log("Payment to {0} of {1} doesn't meet minimum".format(address, vtc_payout_tx[address]))
+            if verboseLog: app_log("Payment to {0} of {1} doesn't meet minimum".format(address, vtc_payout_tx[address]))
             del vtc_payout_tx[address]
 
     # calculate mon fees and remove any payouts that are below mintx
@@ -243,10 +244,10 @@ def pay_shares():
             mon_fee_amount += this_fee
             mon_payout_tx[address] -= this_fee
             mon_payout_tx[address] = round(mon_payout_tx[address], 8)
-            app_log("Sending payment to {0} of {1}".format(address, mon_payout_tx[address]))
+            if verboseLog: app_log("Sending payment to {0} of {1}".format(address, mon_payout_tx[address]))
         else:
             unmark_addresses[address] = True
-            app_log("Payment to {0} of {1} doesn't meet minimum".format(address, mon_payout_tx[address]))
+            if verboseLog: app_log("Payment to {0} of {1} doesn't meet minimum".format(address, mon_payout_tx[address]))
             del mon_payout_tx[address]
            
     for i in reversed(xrange(len(paid_rows))):
