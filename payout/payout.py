@@ -176,7 +176,7 @@ def pay_shares():
             else:
                 if auxuser in mon_payout_tx:
                     # cap payouts at slightly above min_tx (before fees)
-                    if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01:
+                    #if mon_payout_tx[auxuser] <= config["mon_min_tx"] + 0.01: # We are already checking this later, after calculating the total sum
                         mon_payout_tx[auxuser] += monvalue
                         total_mon_amount += monvalue
                         monpaid = True
@@ -193,7 +193,7 @@ def pay_shares():
             else:
                 if user in vtc_payout_tx:
                     # cap payouts at slightly above min_tx (before fees)
-                    if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01:
+                    #if vtc_payout_tx[user] <= config["vtc_min_tx"] + 0.01: # We are already checking this later, after calculating the total sum
                         vtc_payout_tx[user] += vtcvalue
                         total_vtc_amount += vtcvalue
                         vtcpaid = True
@@ -225,7 +225,6 @@ def pay_shares():
     
     # calculate vtc fees and remove any payouts that are below mintx
     for address in vtc_payout_tx.keys():
-        app_log("Checking payout vs fees validation: {0} * (1 - {1}) >= {2}".format(vtc_payout_tx[address], fee, config["vtc_min_tx"]))
         if vtc_payout_tx[address] * (1 - fee) >= config["vtc_min_tx"]:
             this_fee = (vtc_payout_tx[address] * fee)
             vtc_fee_amount += this_fee
@@ -239,7 +238,6 @@ def pay_shares():
 
     # calculate mon fees and remove any payouts that are below mintx
     for address in mon_payout_tx.keys():
-        app_log("Checking payout vs fees validation: {0} * (1 - {1}) >= {2}".format(mon_payout_tx[address], fee, config["mon_min_tx"]))
         if mon_payout_tx[address] * (1 - fee) >= config["mon_min_tx"]:
             this_fee = (mon_payout_tx[address] * fee)
             mon_fee_amount += this_fee
