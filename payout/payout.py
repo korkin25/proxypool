@@ -225,6 +225,7 @@ def pay_shares():
     
     # calculate vtc fees and remove any payouts that are below mintx
     for address in vtc_payout_tx.keys():
+        app_log("Checking payout vs fees validation: {0} * (1 - {1}) >= {2}".format(vtc_payout_tx[address], fee, config["vtc_min_tx"]))
         if vtc_payout_tx[address] * (1 - fee) >= config["vtc_min_tx"]:
             this_fee = (vtc_payout_tx[address] * fee)
             vtc_fee_amount += this_fee
@@ -238,6 +239,7 @@ def pay_shares():
 
     # calculate mon fees and remove any payouts that are below mintx
     for address in mon_payout_tx.keys():
+        app_log("Checking payout vs fees validation: {0} * (1 - {1}) >= {2}".format(mon_payout_tx[address], fee, config["mon_min_tx"]))
         if mon_payout_tx[address] * (1 - fee) >= config["mon_min_tx"]:
             this_fee = (mon_payout_tx[address] * fee)
             mon_fee_amount += this_fee
