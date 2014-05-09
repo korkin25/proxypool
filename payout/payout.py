@@ -163,6 +163,9 @@ def pay_shares():
     unable_to_pay_vtc = False
     unable_to_pay_mon = False
 
+    # TODO: at some point most of this needs to be refactored
+    # into reusable methods instead of duplicating code for vtc / mon
+
     for rowid, user, auxuser, monvalue, vtcvalue in rows:
         if total_mon_amount > mon_balance and total_vtc_amount > vtc_balance:
             break
@@ -174,7 +177,7 @@ def pay_shares():
         if total_mon_amount <= mon_balance and not unable_to_pay_mon:
             # If we can't afford to pay this user, then don't pay any others (save up)
             if monvalue + total_mon_amount > mon_balance:
-                app_log("Unable to pay user {0} due to insufficient funds".format(auxuser))
+                app_log("Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(auxuser, monvalue, total_mon_amount, mon_balance))
                 unable_to_pay_mon = True
             else:
                 if auxuser in mon_payout_tx:
@@ -190,7 +193,7 @@ def pay_shares():
         if total_vtc_amount <= vtc_balance and not unable_to_pay_vtc:
             # if we can't afford to pay this user, then don't pay any others (save up)
             if vtcvalue + total_vtc_amount > vtc_balance:
-                app_log("Unable to pay user {0} due to insufficient funds".format(user))
+                app_log("Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(user, vtcvalue, total_vtc_amount, vtc_balance))
                 unable_to_pay_vtc = True
             else:
                 if user in vtc_payout_tx:
