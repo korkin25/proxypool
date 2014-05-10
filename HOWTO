@@ -71,6 +71,13 @@ Start installing the dependencies:
 sudo apt-get install redis-server python-pip mysql-server haskell-platform libmysqlclient-dev python-mysqldb libssl-dev python-redis
 sudo pip install bunch python-jsonrpc
 
+Find file redis.conf with: "find / redis.conf | grep redis.conf"
+It is usually located in /etc/redis/redis.conf
+Make sure there is a line "bind 127.0.0.1", if not add it
+Make sure there is a line "requirepass PASSWORD", if not add it
+Change PASSWORD with a really strong alphanumeric password (at least 32 characters)
+Restart redis server with: service redis-server restart
+
 Get the share tracking and payouts software:
 
 git clone https://github.com/erkmos/proxypool
@@ -114,7 +121,7 @@ Here's an example conf file:
   , "password": "anything"
 
   , "redisHost": "localhost"
-  , "redisAuth": "my redis auth"
+  , "redisAuth": "PASSWORD"
   , "redisChanName": "shares"
 
   , "publicKeyByte": 71
@@ -136,7 +143,7 @@ Here's an example conf file:
   , "logLevel": "INFO"
 }
 
-
+PASSWORD is the password you set earlier for the redis server
 
 Now for the payouts system, you need to create a database and user with the appropriate credentials:
 
@@ -153,7 +160,7 @@ a sharelogger.conf file and a db.sql file.
 Import the db structure with mysql -u proxypool -p proxypool < db.sql and enter the proxypool users password
 
 Now configure the sharelogger.conf file with your RPC username/passwords and RPC ports for both VTC and MON, the db host, credentials 
-and dbname also configure the vtcfeeaddress and fee (in percent), and the monaddress along with minbalance which should be at least 
+and dbname, redis server password into redisauth, also configure the vtcfeeaddress and fee (in percent), and the monaddress along with minbalance which should be at least 
 1.0 to cover MON transaction fees (there are no free transactions in MON).
 
 The sharelogger.conf file should in the same folder as sharelogger.py and payout.py
