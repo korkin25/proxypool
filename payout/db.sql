@@ -41,8 +41,10 @@ CREATE TABLE `stats_paidshares` (
   PRIMARY KEY (`id`),
   KEY `montx_id` (`montx_id`),
   KEY `vtctx_id` (`vtctx_id`),
+  KEY `plxtx_id` (`plxtx_id`),
   CONSTRAINT `stats_paidshares_ibfk_1` FOREIGN KEY (`montx_id`) REFERENCES `stats_transactions` (`id`),
   CONSTRAINT `stats_paidshares_ibfk_2` FOREIGN KEY (`vtctx_id`) REFERENCES `stats_transactions` (`id`)
+  CONSTRAINT `stats_paidshares_ibfk_3` FOREIGN KEY (`plxtx_id`) REFERENCES `stats_transactions` (`id`)  
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
