@@ -50,11 +50,20 @@ git clone https://github.com/erkmos/monocle
 cd monocle/src
 make -f makefile.unix
 
+If you want to add PLX, get Parallaxcoin:
+
+git clone https://github.com/parallaxcoin/parallaxcoin
+cd parallaxcoin/src
+make -f makefile.unix
+
 Copy monocled to /usr/local/bin or similar if that's where you keep wallet binaries, and start the monocle wallet daemon 
 
 Now run p2pool with the --merged option: 
 
 python run_p2pool.py --net vertcoin -f YOUR-FEES-% --give-author 0 --no-bugreport --merged http://RPCUser:RPCPassword@127.0.0.1:6888
+
+To triple mine with VTC/MON/PLX, use:
+python run_p2pool.py --net vertcoin -f YOUR-FEES-% --give-author 0 --no-bugreport --merged http://MONRPCUser:MONRPCPassword@127.0.0.1:6888 --merged http://PLXRPCUser:PLXRPCPassword@127.0.0.1:7817
 
 Nb. the 6888 above is the default RPC port for Monocle, obviously if you had changed this in the monocle.conf file you'd need to change
 it here as well. You can cat the Monocle debug.log to see that GetAuxBlock RPC calls are being made to monocled by p2pool to double-check
@@ -159,11 +168,27 @@ a sharelogger.conf file and a db.sql file.
 
 Import the db structure with mysql -u proxypool -p proxypool < db.sql and enter the proxypool users password
 
-Now configure the sharelogger.conf file with your RPC username/passwords and RPC ports for both VTC and MON, the db host, credentials 
-and dbname, redis server password into redisauth, also configure the vtcfeeaddress and fee (in percent), and the monaddress along with minbalance which should be at least 
+PLX NOTE: If starting the database from scratch (clean installation) you can simply follow the instructions above and the . If you're modifying an existing node to add PLX, you will need to add some columns in your table. The required commands to be used in your mysql shell are here:
+
+ALTER TABLE stats_paidshares ADD plxuser char(34) AFTER auxuser;
+ALTER TABLE stats_paidshares ADD plxvalue double NOT NULL DEFAULT 0 AFTER vtcvalue;
+ALTER TABLE stats_paidshares ADD plxdiff double NOT NULL DEFAULT 0 AFTER mondiff;
+ALTER TABLE stats_paidshares ADD plxtx_id int(11) AFTER montx_id;
+
+ALTER TABLE stats_shares ADD plxuser char(34) AFTER auxuser;
+ALTER TABLE stats_shares ADD plxvalue double NOT NULL DEFAULT 0 AFTER vtcvalue;
+ALTER TABLE stats_shares ADD plxdiff double NOT NULL DEFAULT 0 AFTER mondiff;
+ALTER TABLE stats_shares ADD plxpaid tinyint(1) DEFAULT 0 AFTER monpaid;
+
+PLX NOTE 2: To pair up a VTC address to a PLX address, add them in the sharelogger.conf file.
+
+PLX NOTE 3: To update a database with existing shares with PLX value !=0, use the script ../payout/update_plxuser.py. SImply add your VTC/PLX pair at the top then run it using python update_plxuser.py.
+
+Now configure the sharelogger.conf file with your RPC username/passwords and RPC ports for VTC, MON and PLX, the db host, credentials 
+and dbname, redis server password into redisauth, also configure the vtcfeeaddress and fee (in percent), and the monfeeaddress+plxfeeaddress along with minbalance which should be at least 
 1.0 to cover MON transaction fees (there are no free transactions in MON).
 
-The sharelogger.conf file should in the same folder as sharelogger.py and payout.py
+The sharelogger.conf file should be in the same folder as sharelogger.py and payout.py
 
 Now in the proxypool folder run ./dist/build/server/server to start proxypool - it will listen on port 9555 which is where users should 
 connect their miner. Make sure your firewall is open. There is no web interface. 
@@ -184,6 +209,8 @@ Note that there is no need to run the sharelogger.py script directly, only the p
 Now instruct your users to connect on port 9555 and use their MON address as password. Eg:
 
 vertminer.exe -o stratum+tcp://NODE-ADDRESS:9555 -u VTC-ADDRESS -p MON-ADDRESS --the-other-settings
+
+To get PLX, users will need to give you their VTC/PLX pair which you should put in the sharelogger.conf file and then restart the payout script. Also run the script to update the database with their PLX address.
 
 Note that users must understand that difficulty manipulation using the + option (eg passing an address like -u "VTC-ADDRESS+0.005") is NOT 
 possible when connecting to proxypool, they must use just their plain, unmodified VTC and MON addresses as username and password.
