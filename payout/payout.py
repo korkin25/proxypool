@@ -5,7 +5,7 @@ from datetime import datetime
 from time import time, sleep
 from itertools import islice
 import json
-from sharelogger import ShareLogger
+from sharelogger_plx import ShareLoggerPLX
 from threading import Thread
 import argparse
 
@@ -28,12 +28,14 @@ except ValueError as e:
 
 
 class Share:
-    def __init__(self, rowid, user, auxuser, vtcpaid, monpaid):
+    def __init__(self, rowid, user, auxuser, plxuser, vtcpaid, monpaid, plxpaid):
         self.rowid = rowid
         self.user = user
         self.auxuser = auxuser
+	self.plxuser = plxuser
         self.vtcpaid = vtcpaid
         self.monpaid = monpaid
+	self.plxpaid = plxpaid
 
 def check_numerical(field):
     try:
@@ -135,11 +137,12 @@ def pay_shares():
     
     app_log("Fetching shares from database...")
     cursor.execute("""
-        select id, user, auxuser, 
+        select id, user, auxuser, plxuser,
         (case when (monpaid = 0) then monvalue else 0 end), 
-        (case when (vtcpaid = 0) then vtcvalue else 0 end)
+        (case when (vtcpaid = 0) then vtcvalue else 0 end),
+	(case when (plxpaid = 0) then plxvalue else 0 end)
         from stats_shares
-        where vtcpaid = 0 or monpaid = 0
+        where vtcpaid = 0 or monpaid = 0 or plxpaid = 0
         order by foundtime desc""")
     rows = cursor.fetchall()
     conn.close()
@@ -151,33 +154,53 @@ def pay_shares():
     mon_balance = mon_wallet.get_balance() - config["minbalance"]
     vtc_wallet = Wallet("vtc", config)
     vtc_balance = vtc_wallet.get_balance() - config["minbalance"]
-
-    app_log("Available balances %.8f MON, %.8f VTC" % (mon_balance if mon_balance > 0 else 0,
-                                                       vtc_balance if vtc_balance > 0 else 0))
+    plx_wallet = Wallet("plx", config)
+    plx_balance = plx_wallet.get_balance() - config["minbalance"]
+    
+    app_log("Available balances %.8f MON, %.8f VTC, %.8f PLX" % (mon_balance if mon_balance > 0 else 0,
+                                                       vtc_balance if vtc_balance > 0 else 0,
+						       plx_balance if plx_balance > 0 else 0))
     app_log("Shares backlog %s" % len(rows))
 
-    total_mon_amount, total_vtc_amount = 0, 0
+    total_mon_amount, total_vtc_amount,total_plx_amount = 0, 0, 0
     mon_payout_tx = dict()
     vtc_payout_tx = dict()
+    plx_payout_tx = dict()    
     paid_rows = []
     unable_to_pay_vtc = False
     unable_to_pay_mon = False
-
+    unable_to_pay_plx = False
+    
     # TODO: at some point most of this needs to be refactored
     # into reusable methods instead of duplicating code for vtc / mon
 
-    for rowid, user, auxuser, monvalue, vtcvalue in rows:
-        if total_mon_amount > mon_balance and total_vtc_amount > vtc_balance:
+    for rowid, user, auxuser, plxuser, monvalue, vtcvalue, plxvalue in rows:
+        
+	# some of this might be redundant, included to ensure the code works with modified mysql tables
+	plxuser='none'
+	for pairs in config['addresspairs']:
+	    if pairs['vtc']==user:
+	        plxuser = pairs['plx']
+		break
+		
+	if plxvalue is None:    
+	    plxvalue=0.0
+	    
+	# We don't want to initiate transactions to people with no set PLX address..   
+	if plxuser=='none':
+	    plxvalue=0.0
+		
+	if total_mon_amount > mon_balance and total_vtc_amount > vtc_balance and total_plx_amount > plx_balance:
             break
 
-        if unable_to_pay_vtc and unable_to_pay_mon:
+        if unable_to_pay_vtc and unable_to_pay_mon and unable_to_pay_plx:
             break
 
-        monpaid, vtcpaid = False, False
+        monpaid, vtcpaid, plxpaid = False, False, False
         if total_mon_amount <= mon_balance and not unable_to_pay_mon:
             # If we can't afford to pay this user, then don't pay any others (save up)
             if monvalue + total_mon_amount > mon_balance:
-                app_log("Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(auxuser, monvalue, total_mon_amount, mon_balance))
+                app_log("MON: Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(auxuser, monvalue, total_mon_amount, mon_balance))
                 unable_to_pay_mon = True
             else:
                 if auxuser in mon_payout_tx:
@@ -192,7 +215,7 @@ def pay_shares():
         if total_vtc_amount <= vtc_balance and not unable_to_pay_vtc:
             # if we can't afford to pay this user, then don't pay any others (save up)
             if vtcvalue + total_vtc_amount > vtc_balance:
-                app_log("Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(user, vtcvalue, total_vtc_amount, vtc_balance))
+                app_log("VTC: Unable to pay user {0} due to insufficient funds. VtcValue: {1}, PendingVtc: {2}, Available Balance: {3}".format(user, vtcvalue, total_vtc_amount, vtc_balance))
                 unable_to_pay_vtc = True
             else:
                 if user in vtc_payout_tx:
@@ -203,25 +226,44 @@ def pay_shares():
                     vtc_payout_tx[user] = vtcvalue
                     total_vtc_amount += vtcvalue
                     vtcpaid = True
+		    
+        if total_plx_amount <= plx_balance and not unable_to_pay_plx:
+            # if we can't afford to pay this user, then don't pay any others (save up)
+            if plxvalue + total_plx_amount > plx_balance:
+                app_log("PLX: Unable to pay user {0} due to insufficient funds. plxValue: {1}, Pendingplx: {2}, Available Balance: {3}".format(plxuser, plxvalue, total_plx_amount, plx_balance))
+                unable_to_pay_plx = True
+            else:
+                if plxuser in plx_payout_tx:
+                    plx_payout_tx[plxuser] += plxvalue
+                    total_plx_amount += plxvalue
+                    plxpaid = True
+                else:
+                    plx_payout_tx[plxuser] = plxvalue
+                    total_plx_amount += plxvalue
+                    plxpaid = True
 
-        if not (monpaid or vtcpaid):
-            if verboseLog: app_log("No valid payments found: {0} | {1} | {2:.8f} | {3:.8f}".format(user, auxuser, vtcvalue, monvalue))
+        if not (monpaid or vtcpaid or plxpaid):
+            if verboseLog: app_log("No valid payments found: {0} | {1} | {2} | {3:.8f} | {4:.8f} | {5:.8f}".format(user, auxuser, plxuser, vtcvalue, monvalue, plxvalue))
             continue
         if monpaid:
             if verboseLog: app_log("Adding MON payment for {0} of {1:.8f}".format(auxuser, monvalue))
         if vtcpaid:
             if verboseLog: app_log("Adding VTC payment for {0} of {1:.8f}".format(user, vtcvalue))
-        paid_rows.append(Share(rowid, user, auxuser, vtcpaid, monpaid))
+        if plxpaid:
+            if verboseLog: app_log("Adding PLX payment for {0} of {1:.8f}".format(plxuser, plxvalue))
+        
+	paid_rows.append(Share(rowid, user, auxuser, plxuser, vtcpaid, monpaid, plxpaid))
 
     # clean up floating point inaccuracies by rounding to full coin units
     for user in vtc_payout_tx.keys():
         vtc_payout_tx[user] = round(vtc_payout_tx[user], 8)
     for auxuser in mon_payout_tx.keys():
         mon_payout_tx[auxuser] = round(mon_payout_tx[auxuser], 8)
-
+    for plxuser in plx_payout_tx.keys():
+        plx_payout_tx[plxuser] = round(plx_payout_tx[plxuser], 8)
 
     # FIXME: redistribute the coins that were from a users too small payout?
-    mon_fee_amount, vtc_fee_amount = 0, 0
+    mon_fee_amount, vtc_fee_amount,plx_fee_amount= 0, 0, 0
 
     unmark_addresses = dict()
     
@@ -250,23 +292,38 @@ def pay_shares():
             unmark_addresses[address] = True
             if verboseLog: app_log("Payment to {0} of {1} doesn't meet minimum".format(address, mon_payout_tx[address]))
             del mon_payout_tx[address]
-           
+    
+    # calculate plx fees and remove any payouts that are below mintx
+    for address in plx_payout_tx.keys():
+        if plx_payout_tx[address] * (1 - fee) >= config["plx_min_tx"]:
+            this_fee = (plx_payout_tx[address] * fee)
+            plx_fee_amount += this_fee
+            plx_payout_tx[address] -= this_fee
+            plx_payout_tx[address] = round(plx_payout_tx[address], 8)
+            if verboseLog: app_log("Sending payment to {0} of {1}".format(address, plx_payout_tx[address]))
+        else:
+            unmark_addresses[address] = True
+            if verboseLog: app_log("Payment to {0} of {1} doesn't meet minimum".format(address, plx_payout_tx[address]))
+            del plx_payout_tx[address]  
+	             
     for i in reversed(xrange(len(paid_rows))):
         share = paid_rows[i]
         if share.user in unmark_addresses:
             share.vtcpaid = False
         if share.auxuser in unmark_addresses:
             share.monpaid = False
-        if not (share.vtcpaid or share.monpaid):
+        if share.plxuser in unmark_addresses:
+            share.plxpaid = False	    
+        if not (share.vtcpaid or share.monpaid or share.plxpaid):
             del paid_rows[i]
     
-    if not vtc_payout_tx and not mon_payout_tx: 
+    if not vtc_payout_tx and not mon_payout_tx and not plx_payout_tx: 
         app_log("No user has a share balance that meets the minimum transaction requirement.")
-        return None, None, None, None
+        return None, None, None, None, None, None
     
     app_log("Shares queued for payment: %d" % len(paid_rows))
     
-    app_log("Fees this run: %.8f MON, %.8f VTC" % (mon_fee_amount, vtc_fee_amount))
+    app_log("Fees this run: %.8f MON, %.8f VTC, %.8f PLX" % (mon_fee_amount, vtc_fee_amount, plx_fee_amount))
 
     if mon_fee_amount > 0:
         if not mon_wallet.depositfee(mon_fee_amount):
@@ -276,7 +333,10 @@ def pay_shares():
         if not vtc_wallet.depositfee(vtc_fee_amount):
             app_log("fee deposit of %.8f VTC failed!" % vtc_fee_amount)
 
-    
+    if plx_fee_amount > 0:
+        if not plx_wallet.depositfee(plx_fee_amount):
+            app_log("fee deposit of %.8f PLX failed!" % plx_fee_amount)
+	       
     vtc_fee_balance = vtc_wallet.get_balance(config["feeaccount"])
     if vtc_fee_balance > 10.0:
         if not config["vtcfeeaddress"] in vtc_payout_tx: 
@@ -297,12 +357,21 @@ def pay_shares():
             mon_payout_tx[config["monfeeaddress"]] += mon_fee_balance
         
         mon_wallet.withdrawfee(mon_fee_balance)
-    
+	
+    plx_fee_balance = plx_wallet.get_balance(config["feeaccount"])
+    if plx_fee_balance > 50.0:
+        if not config["plxfeeaddress"] in plx_payout_tx: 
+            plx_payout_tx[config["plxfeeaddress"]] = plx_fee_balance
+        else:
+            plx_payout_tx[config["plxfeeaddress"]] += plx_fee_balance
+        
+        plx_wallet.withdrawfee(plx_fee_balance)  
+	 
     assert(len(paid_rows) > 0)
     
     vtc_txhash = None
     try:
-        vtc_txhash = vtc_wallet.sendmany(vtc_payout_tx)
+        vtc_txhash = vtc_wallet.sendmany(vtc_payout_tx,"p2pool")
     except HTTPError as e:
         app_log("vertcoind unknown error during sendmany call!")
         for i in reversed(xrange(len(paid_rows))):
@@ -310,15 +379,23 @@ def pay_shares():
     
     mon_txhash = None
     try:  
-        mon_txhash = mon_wallet.sendmany(mon_payout_tx)
+        mon_txhash = mon_wallet.sendmany(mon_payout_tx,"")
     except HTTPError as e:
         app_log("monocled unknown error during sendmany call!")
         for i in reversed(xrange(len(paid_rows))):
             paid_rows[i].monpaid = False
-            if not paid_rows[i].vtcpaid:
+
+    plx_txhash = None
+    try:  
+        plx_txhash = plx_wallet.sendmany(plx_payout_tx,"")
+    except HTTPError as e:
+        app_log("parallaxcoind unknown error during sendmany call!")
+        for i in reversed(xrange(len(paid_rows))):
+            paid_rows[i].plxpaid = False
+            if (not paid_rows[i].vtcpaid) and (not paid_rows[i].monpaid):
                 del paid_rows[i]
 
-    if not vtc_txhash and not mon_txhash:
+    if (not vtc_txhash) and (not mon_txhash) and (not plx_txhash):
         return None, None, None, None
 
     today = datetime.utcnow()
@@ -326,7 +403,8 @@ def pay_shares():
     # add the new transactions to the database
     vtc_txid = store_tx(today, vtc_txhash, vtc_payout_tx, "vtc")
     mon_txid = store_tx(today, mon_txhash, mon_payout_tx, "mon")
-
+    plx_txid = store_tx(today, plx_txhash, plx_payout_tx, "plx")
+    
     app_log("Marking shares paid...")
 
     conn = mdb.connect( 
@@ -341,7 +419,7 @@ def pay_shares():
     
     for share in paid_rows:
         # both share denominations have been paid during this run
-        if share.vtcpaid and share.monpaid:
+        if share.vtcpaid and share.monpaid and share.plxpaid:
             if deleted_count % 2000 == 0 and deleted_count > 0: 
                 conn.commit()
             
@@ -349,14 +427,14 @@ def pay_shares():
             cursor.execute("""
                 insert into 
                 stats_paidshares(foundtime, user, auxuser, 
-                                 sharediff, 
-                                 monvalue, vtcvalue, 
-                                 vtcdiff, mondiff, 
-                                 vtctx_id, montx_id) 
-                select foundtime, user, auxuser, sharediff, 
-                monvalue, vtcvalue, vtcdiff, mondiff, 
-                %s, %s from stats_shares where id = %s
-            """, (vtc_txid, mon_txid, share.rowid))
+                                 plxuser,sharediff, 
+                                 monvalue, vtcvalue,plxvalue, 
+                                 vtcdiff, mondiff,plxdiff, 
+                                 vtctx_id, montx_id,plxtx_id) 
+                select foundtime, user, auxuser, plxuser, sharediff, 
+                monvalue, vtcvalue, plxvalue, vtcdiff, mondiff, plxdiff, 
+                %s, %s, %s from stats_shares where id = %s
+            """, (vtc_txid, mon_txid, plx_txid, share.rowid))
             
             # remove them from unpaid shares
             cursor.execute("delete from stats_shares where id=%s", (share.rowid,))
@@ -377,19 +455,27 @@ def pay_shares():
             cursor.execute(
                 "update stats_shares set vtcpaid=1 where id=%s", (share.rowid,))
             update_count += 1
-
+	    
+        # only the parallaxcoin value has been paid for this share
+        elif share.plxpaid:
+            if update_count % 2000 == 0 and update_count > 0: 
+                conn.commit()
+            cursor.execute(
+                "update stats_shares set plxpaid=1 where id=%s", (share.rowid,))
+            update_count += 1
+	    
     app_log("Deleted %d paid shares." % deleted_count)
     app_log("Marked %s shares as partially paid." % update_count)
     conn.commit()
     conn.close()
-    return vtc_txhash, vtc_payout_tx, mon_txhash, mon_payout_tx
+    return vtc_txhash, vtc_payout_tx, mon_txhash, mon_payout_tx, plx_txhash, plx_payout_tx
 
 def run_sharepayout():
     app_log("Payment processing thread started...")
     while True:
         start = time()
-        vtc_txhash, vtc_tx, mon_txhash, mon_tx = pay_shares()
-        if (not vtc_txhash or not vtc_tx) and (not mon_txhash or not mon_tx):
+        vtc_txhash, vtc_tx, mon_txhash, mon_tx, plx_txhash, plx_tx = pay_shares()
+        if (not vtc_txhash or not vtc_tx) and (not mon_txhash or not mon_tx) and (not plx_txhash or not plx_tx):
             app_log("All transactions failed.")
             app_log("Retrying in 5 minutes.")
             sleep(PAYOUT_INTERVAL)
@@ -402,6 +488,10 @@ def run_sharepayout():
             app_log("Completed mon transaction %s:" % mon_txhash)
             for address,amount in mon_tx.iteritems():
                 app_log("%s %.8f MON" % (address, amount))
+        if plx_txhash:
+            app_log("Completed plx transaction %s:" % plx_txhash)
+            for address,amount in plx_tx.iteritems():
+                app_log("%s %.8f PLX" % (address, amount))		
         app_log("Parsed and sent in %.4f seconds. Next run in 5 minutes." % (time() - start))
         sleep(PAYOUT_INTERVAL)
 

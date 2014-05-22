@@ -58,6 +58,9 @@ class ShareLogger(Thread):
 
     def get_block_reward_vtc(self):
         return float(50 >> (self.infocache["vtc"]["height"]//840000))
+ 
+    def get_block_reward_plx(self):
+        return float(150 >> (self.infocache["plx"]["height"]//350400)) 
     
     def get_block_reward_mon(self):
         height = self.infocache["mon"]["height"]
@@ -75,7 +78,9 @@ class ShareLogger(Thread):
             block_reward = self.get_block_reward_vtc()
         elif coin == "mon":
             block_reward = self.get_block_reward_mon()
-        else:
+	elif coin == "plx":
+            block_reward = self.get_block_reward_plx()
+	else:
             block_reward = 0 # unimplemented coin
         share_value = round((float(block_reward) * share_diff)/net_diff, 12)
         
@@ -88,14 +93,26 @@ class ShareLogger(Thread):
     def log_share(self, share):
         vtcinfo = self.get_info("vtc")
         moninfo = self.get_info("mon")
+	plxinfo = self.get_info("plx")
+	
+	# Register the PLX address if a VTC/PLX pair exists for a given address
+        plxuser='none'
+	for pairs in self.config["addresspairs"]:
+	    if pairs['vtc']==share["sub"]:
+	        plxuser = pairs['plx']
+		# print "Found matching address for %s" % pairs['vtc']
+		break
+		
         if not self.cursor: 
             raise Exception("Sharelogger not started or database error")
         if share["valid"]:
             sharediff = round(share["diff"], 8)
             vtc_value = self.get_value(sharediff, vtcinfo["difficulty"], "vtc")
             mon_value = self.get_value(sharediff, moninfo["difficulty"], "mon")
+   	    plx_value = self.get_value(sharediff, plxinfo["difficulty"], "plx")
+
         else:
-            vtc_value, mon_value = 0, 0
+            vtc_value, mon_value, plx_value = 0, 0, 0
         self.numshares += 1
         if self.debug:
             print "%s share# %d, %s" % (datetime.now(), self.numshares, share)
@@ -106,17 +123,20 @@ class ShareLogger(Thread):
         # statistics purposes only
         self.cursor.execute("""
         insert into 
-        stats_shares(foundtime, user, auxuser, vtcvalue, monvalue, 
-                     sharediff, vtcdiff, mondiff, valid) 
-        values(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        stats_shares(foundtime, user, auxuser, plxuser, vtcvalue, monvalue, plxvalue, 
+                     sharediff, vtcdiff, mondiff, plxdiff, valid) 
+        values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (datetime.fromtimestamp(share["time"]), 
          share["sub"],
          share["aux"],
+	 plxuser,
          vtc_value,
          mon_value, 
+	 plx_value,
          round(share["diff"], 8), 
          vtcinfo["difficulty"],
          moninfo["difficulty"], 
+	 plxinfo["difficulty"],
          share["valid"]
         ))
         self.conn.commit()
