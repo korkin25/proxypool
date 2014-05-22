@@ -5,7 +5,7 @@ from datetime import datetime
 from time import time, sleep
 from itertools import islice
 import json
-from sharelogger_plx import ShareLoggerPLX
+from sharelogger import ShareLogger
 from threading import Thread
 import argparse
 
